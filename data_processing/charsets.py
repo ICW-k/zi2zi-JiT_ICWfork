@@ -2,6 +2,7 @@ from typing import FrozenSet
 
 from .charsets_data import (
     GB2312_CODEPOINTS,
+    GBK_CODEPOINTS,
     BIG5_CODEPOINTS,
     JISX0208_CODEPOINTS,
     KSX1001_CODEPOINTS,
@@ -28,8 +29,9 @@ def get_charset_codepoints(charset_name: str) -> FrozenSet[int]:
     if charset_lower == "gb2312":
         return GB2312_CODEPOINTS
     if charset_lower == "gbk":
-        # Keep behavior identical to font-data-dump preprocessing/consts.py.
-        return GB2312_CODEPOINTS
+        # 真 GBK：20,902 个汉字（CJK 基本区，与 HanziGen 的 gbk 基准一致），
+        # 由 data_processing/charsets_data/gbk.py 提供（Python 内置 gbk 编码器生成）。
+        return GBK_CODEPOINTS
     if charset_lower == "big5":
         return BIG5_CODEPOINTS
     if charset_lower == "jisx0208":
