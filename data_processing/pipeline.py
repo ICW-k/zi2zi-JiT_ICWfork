@@ -279,21 +279,28 @@ def extract_test_src_target_refs(
 
     train_set = set(train_codepoints)
     unseen_codepoints = sorted(filtered_codepoints - train_set)
+    degraded_test = False
 
     if len(unseen_codepoints) < test_sample_count:
-        return {
-            "success": False,
-            "error": f"Not enough unseen glyphs (need {test_sample_count}, got {len(unseen_codepoints)})",
-            "font_file": target_font_path.name,
-        }
+        # 训练已覆盖(几乎)全部交集字（TRAIN_CHARS_PER_FONT >= 交集大小 时必然发生），
+        # 无法再挑"训练未见字"。降级为从全部交集字中抽展示用字（含训练字）：
+        # 仅用于可视化还原，不作为"未见字泛化"指标。
+        if len(filtered_codepoints) < test_sample_count:
+            return {
+                "success": False,
+                "error": f"Not enough unseen glyphs (need {test_sample_count}, got {len(unseen_codepoints)})",
+                "font_file": target_font_path.name,
+            }
+        selected_codepoints = _sample_codepoints(sorted(filtered_codepoints), test_sample_count, seed)
+        degraded_test = True
+    else:
+        selected_codepoints = _sample_codepoints(unseen_codepoints, test_sample_count, seed)
     if len(train_codepoints) < 8:
         return {
             "success": False,
             "error": f"Not enough training references (need 8, got {len(train_codepoints)})",
             "font_file": target_font_path.name,
         }
-
-    selected_codepoints = _sample_codepoints(unseen_codepoints, test_sample_count, seed)
 
     ensure_output_directory(str(output_dir))
     source_renderer = GlyphRenderer(str(source_validated_path), resolution)
@@ -349,7 +356,9 @@ def extract_test_src_target_refs(
             "dataset_type": "test",
             "sample_requested": test_sample_count,
             "training_reference_count": len(train_codepoints),
-            "note": "Test set: target characters are UNSEEN, references are from training set",
+            "note": ("Test set: target characters are UNSEEN, references are from training set"
+                     if not degraded_test else
+                     "DEGRADED: train covered all overlap chars; test chars are seen (visualization only)"),
             "extracted_count": successful,
             "failed_count": failed,
             "resolution": resolution,
@@ -367,6 +376,7 @@ def extract_test_src_target_refs(
         "extracted": successful,
         "failed": failed,
         "output_dir": str(output_dir),
+        "degraded_test": degraded_test,
     }
 
 

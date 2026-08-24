@@ -197,13 +197,35 @@ def main(args):
     if compare_folder:
         os.makedirs(compare_folder, exist_ok=True)
 
-    num_batches = (n + args.batch_size - 1) // args.batch_size
-    for start in range(0, n, args.batch_size):
-        end = min(start + args.batch_size, n)
-        font_b = torch.from_numpy(font_labels[start:end]).long().to(device)
-        char_b = torch.from_numpy(char_labels[start:end]).long().to(device)
-        style_b = torch.from_numpy(style_images[start:end].copy()).float().to(device) / 255.0 * 2.0 - 1.0
-        content_b = torch.from_numpy(content_images[start:end].copy()).float().to(device) / 255.0 * 2.0 - 1.0
+    # 断点续传：扫描已生成的 PNG，已存在的字符直接跳过（中止后重跑只算剩余部分，省机时）
+    done_cps = set()
+    if os.path.isdir(gen_folder):
+        for fn in os.listdir(gen_folder):
+            if fn.startswith("U+") and fn.endswith(".png"):
+                try:
+                    done_cps.add(int(fn[2:6], 16))
+                except ValueError:
+                    pass
+    # 兼容旧文件名格式 {font:04d}_U+{cp:04X}.png
+    for fn in os.listdir(gen_folder):
+        if "_U+" in fn and fn.endswith(".png"):
+            try:
+                done_cps.add(int(fn.split("_U+")[1][:4], 16))
+            except ValueError:
+                pass
+    todo_idx = [i for i, cp in enumerate(usable) if cp not in done_cps]
+    if todo_idx:
+        print(f"[补集] 断点续传: 已存在 {n - len(todo_idx)}/{n} 个，跳过，只生成剩余 {len(todo_idx)} 个")
+    else:
+        print(f"[补集] 全部 {n} 个缺失字已生成，无需重算")
+
+    for s in range(0, len(todo_idx), args.batch_size):
+        idx_b = todo_idx[s:s + args.batch_size]
+        end_show = s + len(idx_b)
+        font_b = torch.from_numpy(font_labels[idx_b]).long().to(device)
+        char_b = torch.from_numpy(char_labels[idx_b]).long().to(device)
+        style_b = torch.from_numpy(style_images[idx_b].copy()).float().to(device) / 255.0 * 2.0 - 1.0
+        content_b = torch.from_numpy(content_images[idx_b].copy()).float().to(device) / 255.0 * 2.0 - 1.0
         labels = (font_b, char_b, style_b, content_b)
 
         with (torch.amp.autocast("cuda", dtype=torch.bfloat16) if use_cuda_amp else nullcontext()):
@@ -212,18 +234,17 @@ def main(args):
         generated = (generated + 1) / 2
         generated = generated.detach().cpu()
 
-        for b_id in range(end - start):
-            img_id = start + b_id
+        for j, img_id in enumerate(idx_b):
             cp = usable[img_id]
             filename = f"{int(font_labels[img_id]):04d}_U+{cp:04X}"
-            gen_img = np.round(np.clip(generated[b_id].numpy().transpose([1, 2, 0]) * 255, 0, 255))
+            gen_img = np.round(np.clip(generated[j].numpy().transpose([1, 2, 0]) * 255, 0, 255))
             gen_img = gen_img.astype(np.uint8)[:, :, ::-1]  # RGB -> BGR
             cv2.imwrite(os.path.join(gen_folder, f"{filename}.png"), gen_img)
             if compare_folder and args.pairwise == "src_gen":
                 src_img = content_images[img_id].transpose([1, 2, 0])[:, :, ::-1]
                 cv2.imwrite(os.path.join(compare_folder, f"{filename}.png"),
                             np.concatenate([src_img, gen_img], axis=1))
-        print(f"[补集] 生成中 {end}/{n} ...")
+        print(f"[补集] 续跑进度 {end_show}/{len(todo_idx)}（已跳过 {n - len(todo_idx)} 个）...")
 
     # 缺失字清单（U+XXXX\t字符）
     with open(os.path.join(args.output_dir, "missing_chars.txt"), "w", encoding="utf-8") as f:

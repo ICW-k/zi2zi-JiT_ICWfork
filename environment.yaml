@@ -21,4 +21,4 @@ dependencies:
     - lpips
     - tqdm
     - matplotlib
-    - -e git+https://github.com/LTH14/torch-fidelity.git@master#egg=torch-fidelity
+    - torch-fidelity

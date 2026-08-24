@@ -186,6 +186,7 @@ python generate_chars.py \
 - If neither `--sampling_method` nor `--num_sampling_steps` is overridden, the script keeps the checkpoint's saved inference settings.
 - Current recommended fast setting: `--sampling_method ab2 --cfg 2.6` and let the default `20` steps apply.
 - `heun-50` is kept as a conservative legacy/reference baseline. In the current 50-sample MPS benchmark, `ab2-20` and `euler-20` were both faster and scored better than `heun-50` on SSIM, LPIPS, and L1.
+- `--pairwise` saves side-by-side comparisons: `src_gen` (source|generated) or `target_gen` (target|generated, requires `target_images` in the npz). Comparisons go to the `compare/` subfolder, ready for `compute_pairwise_metrics.py`.
 
 Example fast generation command:
 
@@ -196,6 +197,55 @@ python generate_chars.py \
     --output_dir run/generated_chars_ab2/ \
     --sampling_method ab2
 ```
+
+### Missing Glyph Completion
+
+When the target font lacks some characters in the charset (e.g. `gb2312`), a fine-tuned LoRA checkpoint can complete them:
+
+1. Read the target font's cmap with fontTools and compute `charset - covered characters = missing characters`;
+2. Missing characters are rendered by the **source font** as the content glyph (the model cannot invent unseen structures);
+3. Style reference images come from the **target font itself** (matching the training ref grid);
+4. Each missing glyph is generated as PNG and a manifest file is written.
+
+```bash
+python scripts/generate_missing_chars.py \
+    --checkpoint run/lora_ft_sample_single/checkpoint-last.pth \
+    --target-font fonts/<target_font>.ttf \
+    --source-font fonts/<source_font>.ttf \
+    --charset gb2312 \
+    --output-dir run/lora_ft_sample_single/missing_chars
+```
+
+Output structure:
+
+```
+run/lora_ft_sample_single/missing_chars/
+├── generated/          # Generated missing glyphs (0000_U+XXXX.png)
+├── compare/            # Source|generated comparisons (only with --pairwise src_gen)
+└── missing_chars.txt   # Manifest (U+XXXX\tcharacter)
+```
+
+**Key parameters:**
+
+| Parameter | Note |
+|---|---|
+| `--target-font`, `--source-font` | Required. Target font (missing glyphs to complete) + source font (provides content glyphs, **must cover the missing characters**). |
+| `--charset` | Charset used for completion, default `gb2312`. |
+| `--pairwise` | Whether to save `source\|generated` side-by-side comparisons. `src_gen` (default, doubles disk I/O) / `none` (generated images only, saves half the I/O). `target_gen` is unavailable here — the target font has no such missing glyphs, and the script does not implement that branch. |
+| `--ref-chars` | Comma-separated style reference characters (default: auto-picked from characters the target font can render). |
+| `--ref-count` | Number of auto-picked style reference characters, default 8 (capped at 8). |
+| `--cfg`, `--num-sampling-steps`, `--sampling-method` | Sampling parameters, defaults taken from the checkpoint (same rules as `generate_chars.py`). |
+| `--resolution` | Render resolution, must match training (default 256). |
+| `--num-images` | Max number of missing glyphs to generate, default all. |
+| `--batch-size` | Inference batch size, default 64. |
+| `--seed`, `--device` | Random seed and device (auto/cpu/cuda/mps). |
+
+**Notes:**
+
+- **Resume support**: glyphs already present in `generated/` are skipped; rerunning after an interruption only processes the remainder.
+- **Source coverage**: missing characters the source font cannot render are skipped (see `missing_chars.txt`).
+- **Embedding limit**: characters beyond the model's `num_chars` embedding space are skipped.
+- **Training alignment**: to fully align character labels with training, train with `TRAIN_CHARS_PER_FONT` covering the whole CHARSET and `MAX_CHARS_PER_FONT` set to None.
 
 ### Metrics
 

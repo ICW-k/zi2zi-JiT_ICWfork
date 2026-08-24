@@ -26,7 +26,14 @@ Usage:
 """
 import argparse
 import logging
+import os
+import sys
 from pathlib import Path
+
+# 把仓库根目录加入 sys.path，脚本可在任意位置运行（例如被 subprocess 调用时）
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 from data_processing.pipeline import generate_train_dataset, generate_test_dataset, create_test_npz
 

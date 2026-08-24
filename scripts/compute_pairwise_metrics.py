@@ -24,6 +24,11 @@ import cv2
 from pytorch_msssim import ssim as _ssim_fn
 import lpips
 
+# 把仓库根目录加入 sys.path，脚本可在任意位置运行（例如被 subprocess 调用时）
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 from util.metrics import compute_fid
 
 

@@ -25,6 +25,22 @@ def _resolve_fid_statistics_file(img_size):
     return fid_statistics_file
 
 
+def _save_reference_images(target_images_all, num_images, ref_folder):
+    """把 test_npz 里的 ground truth 图像保存到 ref_folder，供 torch-fidelity 0.3.0 用作 input2。
+
+    torch-fidelity PyPI 0.3.0 不支持 fid_statistics_file 参数（那是 LTH14 fork 的特性），
+    因此改为直接提供真实的参考图像目录。
+    """
+    os.makedirs(ref_folder, exist_ok=True)
+    for img_id in range(num_images):
+        out_path = os.path.join(ref_folder, '{:05d}.png'.format(img_id))
+        if os.path.exists(out_path):
+            continue  # 已生成则跳过，避免重复 I/O
+        target_img = target_images_all[img_id].transpose([1, 2, 0])
+        target_img = target_img[:, :, ::-1]  # RGB -> BGR for cv2
+        cv2.imwrite(out_path, target_img)
+
+
 def train_one_epoch(model, model_without_ddp, data_loader, optimizer, device, epoch, log_writer=None, args=None):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -204,11 +220,11 @@ def evaluate(model_without_ddp, args, epoch, batch_size=64, log_writer=None):
     model_without_ddp.load_state_dict(model_state_dict)
 
     if log_writer is not None:
-        fid_statistics_file = _resolve_fid_statistics_file(args.img_size)
+        ref_folder = os.path.join(base_folder, "reference")
+        _save_reference_images(target_images_all, num_images, ref_folder)
         metrics_dict = torch_fidelity.calculate_metrics(
             input1=gen_folder,
-            input2=None,
-            fid_statistics_file=fid_statistics_file,
+            input2=ref_folder,
             cuda=True,
             isc=True,
             fid=True,
@@ -375,11 +391,11 @@ def evaluate_single_gpu(model, args, epoch, batch_size=64, log_writer=None):
             cv2.imwrite(os.path.join(save_folder, 'grid_{}.png'.format(str(grid_id).zfill(5))), grid_img)
 
     if log_writer is not None:
-        fid_statistics_file = _resolve_fid_statistics_file(args.img_size)
+        ref_folder = os.path.join(base_folder, "reference")
+        _save_reference_images(target_images_all, num_images, ref_folder)
         metrics_dict = torch_fidelity.calculate_metrics(
             input1=gen_folder,
-            input2=None,
-            fid_statistics_file=fid_statistics_file,
+            input2=ref_folder,
             cuda=True,
             isc=True,
             fid=True,

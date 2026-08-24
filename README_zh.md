@@ -182,6 +182,7 @@ python generate_chars.py \
 - 如果既不覆盖 `--sampling_method`，也不覆盖 `--num_sampling_steps`，脚本会沿用 checkpoint 中保存的推理配置。
 - 当前推荐的快速生成设置为：`--sampling_method ab2 --cfg 2.6`，并使用默认的 `20` 步。
 - `heun-50` 目前更适合作为保守的历史/参考基线。在当前的 50 样本 MPS 基准中，`ab2-20` 和 `euler-20` 在 SSIM、LPIPS 和 L1 上都优于 `heun-50`，同时速度也更快。
+- `--pairwise` 可输出左右对比图：`src_gen`（源字形|生成结果）或 `target_gen`（目标字形|生成结果，需 npz 含 `target_images`）。对比图写入 `compare/` 子目录，可直接供 `compute_pairwise_metrics.py` 计算指标。
 
 快速生成示例：
 
@@ -192,6 +193,55 @@ python generate_chars.py \
     --output_dir run/generated_chars_ab2/ \
     --sampling_method ab2
 ```
+
+### 缺失字补集生成（缺字补全）
+
+当目标字体缺少字符集（如 `gb2312`）中的部分汉字时，可用训练好的 LoRA checkpoint 补全这些缺失字。原理：
+
+1. 用 fontTools 读取目标字体 cmap，计算 `字符集 - 目标字体已覆盖字符 = 缺失字`；
+2. 缺失字由**参照字体（source-font）**渲染作为 content 字形（模型无法凭空生成没见过的结构）；
+3. 样式参考图取自**目标字体自身**（与训练时的 ref 网格一致）；
+4. 逐个生成缺失字 PNG，并输出缺失字清单。
+
+```bash
+python scripts/generate_missing_chars.py \
+    --checkpoint run/lora_ft_sample_single/checkpoint-last.pth \
+    --target-font fonts/<目标字体>.ttf \
+    --source-font fonts/<参照字体>.ttf \
+    --charset gb2312 \
+    --output-dir run/lora_ft_sample_single/missing_chars
+```
+
+输出目录结构：
+
+```
+run/lora_ft_sample_single/missing_chars/
+├── generated/          # 生成的缺失字 PNG（0000_U+XXXX.png）
+├── compare/            # 源字形|生成结果 对比图（仅 --pairwise src_gen 时生成）
+└── missing_chars.txt   # 缺失字清单（U+XXXX\t字符）
+```
+
+**关键参数：**
+
+| 参数 | 说明 |
+|---|---|
+| `--target-font`、`--source-font` | 必填。目标字体（缺字待补全）+ 参照字体（提供 content 字形，**须覆盖缺失字**）。 |
+| `--charset` | 补全基准字符集，默认 `gb2312`。 |
+| `--pairwise` | 是否输出 `源字形\|生成结果` 左右对比图。`src_gen`（默认，写盘量翻倍）/ `none`（只出生成图，省一半 I/O）。`target_gen` 在补集场景不可用——目标字体没有这些缺失字，脚本未实现该分支。 |
+| `--ref-chars` | 逗号分隔的样式参考字（默认自动从目标字体可渲染的字里随机挑）。 |
+| `--ref-count` | 自动挑选的样式参考字数量，默认 8（上限 8）。 |
+| `--cfg`、`--num-sampling-steps`、`--sampling-method` | 采样参数，默认沿用 checkpoint（同 generate_chars.py 的规则）。 |
+| `--resolution` | 渲染分辨率，须与训练一致（默认 256）。 |
+| `--num-images` | 最多生成多少个缺失字，默认全部。 |
+| `--batch-size` | 推理批量，默认 64。 |
+| `--seed`、`--device` | 随机种子与设备（auto/cpu/cuda/mps）。 |
+
+**注意事项：**
+
+- **断点续传**：`generated/` 中已存在的字会自动跳过，中断后重跑只算剩余部分。
+- **源字体覆盖**：源字体无法渲染的缺失字会被跳过（可在 `missing_chars.txt` 中查看）。
+- **字符嵌入限制**：超出模型 `num_chars` 字符嵌入空间的字会被跳过。
+- **训练对齐**：想让字符标签与训练阶段完全对齐，训练时建议 `TRAIN_CHARS_PER_FONT` 覆盖整个 CHARSET、`MAX_CHARS_PER_FONT` 设为 None。
 
 ### 指标计算
 
