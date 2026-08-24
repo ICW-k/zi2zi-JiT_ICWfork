@@ -40,6 +40,7 @@ from data_processing.font_utils import GlyphRenderer, get_cjk_codepoints, load_f
 from data_processing.pipeline import create_combined_image, create_reference_grid, _extract_ref
 from generate_chars import DEFAULT_STEPS_BY_METHOD, patch_torch_for_device, resolve_device
 from util.lora_utils import _is_lora_state_dict, inject_lora
+from util.misc import get_amp_dtype
 
 
 def get_args_parser():
@@ -228,7 +229,7 @@ def main(args):
         content_b = torch.from_numpy(content_images[idx_b].copy()).float().to(device) / 255.0 * 2.0 - 1.0
         labels = (font_b, char_b, style_b, content_b)
 
-        with (torch.amp.autocast("cuda", dtype=torch.bfloat16) if use_cuda_amp else nullcontext()):
+        with (torch.amp.autocast("cuda", dtype=get_amp_dtype()) if use_cuda_amp else nullcontext()):
             generated = model.generate(labels)
 
         generated = (generated + 1) / 2

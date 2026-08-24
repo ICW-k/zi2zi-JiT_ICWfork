@@ -75,7 +75,7 @@ def train_one_epoch(model, model_without_ddp, data_loader, optimizer, device, ep
             content_images
         )
 
-        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+        with torch.amp.autocast('cuda', dtype=misc.get_amp_dtype()):
             loss = model(x, labels)
 
         loss_value = loss.item()
@@ -166,7 +166,7 @@ def evaluate(model_without_ddp, args, epoch, batch_size=64, log_writer=None):
 
         labels_gen = (font_labels_gen, char_labels_gen, style_images_gen, content_images_gen)
 
-        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+        with torch.amp.autocast('cuda', dtype=misc.get_amp_dtype()):
             sampled_images = model_without_ddp.generate(labels_gen)
 
         torch.distributed.barrier()
@@ -274,7 +274,7 @@ def train_one_epoch_single_gpu(model, data_loader, optimizer, device, epoch, log
             content_images
         )
 
-        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+        with torch.amp.autocast('cuda', dtype=misc.get_amp_dtype()):
             loss = model(x, labels)
 
         loss_value = loss.item()
@@ -344,7 +344,7 @@ def evaluate_single_gpu(model, args, epoch, batch_size=64, log_writer=None):
 
         labels_gen = (font_labels_gen, char_labels_gen, style_images_gen, content_images_gen)
 
-        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+        with torch.amp.autocast('cuda', dtype=misc.get_amp_dtype()):
             sampled_images = model.generate(labels_gen)
 
         sampled_images = (sampled_images + 1) / 2

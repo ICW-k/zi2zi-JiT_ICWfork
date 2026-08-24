@@ -28,6 +28,8 @@ import math
 
 import torch
 
+from util.misc import get_amp_dtype
+
 
 # ---------------------------------------------------------------------------
 # 标定常数（table 模式用）
@@ -150,7 +152,7 @@ def probe_batch_size(model, device, img_size=256, ref_size=128,
         torch.cuda.reset_peak_memory_stats(device)
         torch.cuda.empty_cache()
         x, labels = make_batch(bsz)
-        with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+        with torch.amp.autocast("cuda", dtype=get_amp_dtype()):
             loss = model(x, labels)
         loss.backward()
         torch.cuda.synchronize()
@@ -163,7 +165,7 @@ def probe_batch_size(model, device, img_size=256, ref_size=128,
     try:
         # 预热一次（触发 torch.compile 编译 + 分配器热身），丢弃其峰值
         x, labels = make_batch(probe_batches[0])
-        with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+        with torch.amp.autocast("cuda", dtype=get_amp_dtype()):
             loss = model(x, labels)
         loss.backward()
         model.zero_grad(set_to_none=True)

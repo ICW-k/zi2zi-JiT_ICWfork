@@ -370,7 +370,7 @@ def main(args):
         labels = (font_labels_batch, char_labels_batch, style_images_batch, content_images_batch)
 
         # Generate
-        with (torch.amp.autocast('cuda', dtype=torch.bfloat16) if use_cuda_amp else nullcontext()):
+        with (torch.amp.autocast('cuda', dtype=misc.get_amp_dtype()) if use_cuda_amp else nullcontext()):
             generated = model.generate(labels)
 
         if world_size > 1:
