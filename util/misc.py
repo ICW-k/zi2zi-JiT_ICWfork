@@ -303,15 +303,12 @@ def save_model_no_ema(args, model_without_ddp, epoch, epoch_name=None):
 
 
 def get_amp_dtype():
-    """选择当前设备合适的自动混合精度 dtype。
+    """返回自动混合精度的 dtype。
 
-    - CUDA：Ampere 及以上（算力 >= 8.0）原生支持 bfloat16 -> torch.bfloat16；
-      更老架构（如 V100 / cc 7.0，无 bf16 张量核）降级 torch.float16：
-      既消除 Inductor "does not support bfloat16" 警告，又真正用上 fp16 张量核
-      （bf16 在老卡上只会被模拟成 fp32 运算，既慢又无张量核加速）。
-    - 非 CUDA（CPU/MPS）：保持 torch.bfloat16（原行为）。
+    与原项目（kaonashi-tyc/zi2zi-JiT）保持一致：始终用 bfloat16。
+    - Ampere+（算力 >= 8.0）原生 bf16 张量核，快且稳。
+    - 老卡（V100 / cc 7.0）无 bf16 张量核，PyTorch 会把 bf16 自动模拟成 fp32 运算，
+      数值范围与 fp32 一致（不会像 fp16 那样溢出成 NaN），且比全程 fp32 略快。
+      原项目在 V100 上即以此方式正常训练（约 5 秒/轮），不要降级成 fp16/fp32。
     """
-    if torch.cuda.is_available():
-        major, _ = torch.cuda.get_device_capability()
-        return torch.bfloat16 if major >= 8 else torch.float16
     return torch.bfloat16
