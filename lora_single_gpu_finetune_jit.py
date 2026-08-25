@@ -58,6 +58,7 @@ def get_args_parser():
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--start_epoch', default=0, type=int)
     parser.add_argument('--num_workers', default=12, type=int)
+    parser.add_argument('--prefetch_factor', default=4, type=int)
     parser.add_argument('--pin_mem', action='store_true')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
     parser.set_defaults(pin_mem=True)
@@ -149,6 +150,8 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
+        prefetch_factor=getattr(args, "prefetch_factor", 4),
+        persistent_workers=True,
         collate_fn=collate_src_target_refs
     )
 

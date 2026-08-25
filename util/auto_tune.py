@@ -55,6 +55,38 @@ BASE_OVERHEAD_GB_TABLE = {
 # ---------------------------------------------------------------------------
 # 硬件检测
 # ---------------------------------------------------------------------------
+def _real_cpu_count():
+    """返回容器/虚拟机的真实 CPU 配额。
+
+    云平台（AutoDL/Colab/容器）里 os.cpu_count() 返回宿主机逻辑核数（如 128），
+    而非实例配额（如 12 vCPU）。优先读 cgroup 配额，读不到再回退 os.cpu_count()。
+    """
+    # cgroup v2
+    for path in ("/sys/fs/cgroup/cpu.max", "/sys/fs/cgroup/cpu/cpu.max"):
+        try:
+            with open(path, "r") as f:
+                quota, period = f.read().strip().split()
+            if quota != "max":
+                return max(1, int(quota) // int(period))
+        except Exception:
+            continue
+    # cgroup v1
+    for q, p in (("/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
+                  "/sys/fs/cgroup/cpu/cpu.cfs_period_us"),
+                 ("/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_quota_us",
+                  "/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_period_us")):
+        try:
+            with open(q, "r") as f:
+                quota = int(f.read().strip())
+            with open(p, "r") as f:
+                period = int(f.read().strip())
+            if quota > 0:
+                return max(1, quota // period)
+        except Exception:
+            continue
+    return os.cpu_count() or 1
+
+
 def detect_hardware():
     """返回当前机器的硬件信息字典。"""
     info = {
@@ -63,7 +95,7 @@ def detect_hardware():
         "gpu_name": None,
         "total_vram_gb": 0.0,
         "free_vram_gb": 0.0,
-        "cpu_cores": os.cpu_count() or 1,
+        "cpu_cores": _real_cpu_count(),
     }
     if info["cuda"]:
         props = torch.cuda.get_device_properties(0)
