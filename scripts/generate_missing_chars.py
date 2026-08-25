@@ -38,7 +38,13 @@ if _ROOT not in sys.path:
 from data_processing.charsets import get_charset_codepoints
 from data_processing.font_utils import GlyphRenderer, get_cjk_codepoints, load_font
 from data_processing.pipeline import create_combined_image, create_reference_grid, _extract_ref
-from generate_chars import DEFAULT_STEPS_BY_METHOD, patch_torch_for_device, resolve_device
+# V100 专用：Cell5 在检测到 V100（cc<8，不支持 bf16 原生编译）时设置环境变量
+# ZI2ZI_V100=1，这里据此切换到禁用 torch.compile 的 generate_chars_V100 版本，
+# 从而消除 Inductor "does not support bfloat16 compilation natively, skipping" 刷屏警告。
+if os.environ.get("ZI2ZI_V100") == "1":
+    from generate_chars_V100 import DEFAULT_STEPS_BY_METHOD, patch_torch_for_device, resolve_device
+else:
+    from generate_chars import DEFAULT_STEPS_BY_METHOD, patch_torch_for_device, resolve_device
 from util.lora_utils import _is_lora_state_dict, inject_lora
 from util.misc import get_amp_dtype
 
