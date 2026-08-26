@@ -133,6 +133,13 @@ def _identity_compile(fn=None, *args, **kwargs):
 
 def patch_torch_for_device(device):
     if device.type == 'cuda':
+        # 4090（Ada，cc>=8.0）启用 TF32 Tensor Core 加速 fp32 矩阵乘，消除
+        # "TensorFloat32 tensor cores available but not enabled" 警告并提速。
+        try:
+            if torch.cuda.get_device_capability(device)[0] >= 8:
+                torch.set_float32_matmul_precision('high')
+        except Exception:
+            pass
         return
 
     if device.type == 'mps':

@@ -210,6 +210,11 @@ def main(args):
         model.load_state_dict(checkpoint["model"])
         if "epoch" in checkpoint:
             args.start_epoch = checkpoint["epoch"] + 1
+        # 完美续训：恢复 AdamW 优化器状态（动量/方差），学习率调度也随之从断点继续。
+        # 旧 checkpoint（未存 optimizer）时自动跳过，不影响加载。
+        if "optimizer" in checkpoint:
+            optimizer.load_state_dict(checkpoint["optimizer"])
+            print("  [resume] 已恢复 optimizer 状态")
         print("Resumed LoRA checkpoint from", checkpoint_path)
         del checkpoint
     elif args.resume:
@@ -236,7 +241,8 @@ def main(args):
                 args=args,
                 model_without_ddp=model,
                 epoch=epoch,
-                epoch_name="last"
+                epoch_name="last",
+                optimizer=optimizer
             )
 
         if args.online_eval and epoch > 0 and (epoch % args.eval_freq == 0 or epoch + 1 == args.epochs):

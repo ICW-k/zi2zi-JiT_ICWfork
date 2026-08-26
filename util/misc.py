@@ -289,7 +289,7 @@ def all_reduce_mean(x):
         return x
 
 
-def save_model_no_ema(args, model_without_ddp, epoch, epoch_name=None):
+def save_model_no_ema(args, model_without_ddp, epoch, epoch_name=None, optimizer=None):
     if epoch_name is None:
         epoch_name = str(epoch)
     output_dir = Path(args.output_dir)
@@ -299,6 +299,10 @@ def save_model_no_ema(args, model_without_ddp, epoch, epoch_name=None):
         'epoch': epoch,
         'args': args,
     }
+    # 可选保存优化器状态，用于断点续训时的完美恢复（Adam 动量/学习率调度）。
+    # 传 None 则不存，保持向后兼容。
+    if optimizer is not None:
+        to_save['optimizer'] = optimizer.state_dict()
     save_on_master(to_save, checkpoint_path)
 
 
