@@ -2,6 +2,7 @@ import argparse
 import datetime
 import os
 import time
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +24,17 @@ from main_jit import FontSrcTargetRefsDataset, collate_src_target_refs
 from util.crop import resize_and_random_crop
 from util.misc import save_model_no_ema
 import util.misc as misc
+
+
+def _resize_and_random_crop(img, image_size):
+    """模块级可 pickle 包装。
+
+    Windows 上 DataLoader 默认用 spawn 启动 worker，需要 pickle 整个 dataset（含
+    transform）。而 lambda 定义在 main 的局部作用域无法序列化（报
+    "Can't get local object 'main.<locals>.<lambda>'）。用模块级函数 + partial
+    绑定 image_size 即可跨平台 pickle；Linux 的 fork 模式同样兼容，无副作用。
+    """
+    return resize_and_random_crop(img, image_size)
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +141,7 @@ def main(args):
         log_writer = None
 
     transform_train = transforms.Compose([
-        transforms.Lambda(lambda img: resize_and_random_crop(img, args.img_size)),
+        transforms.Lambda(partial(_resize_and_random_crop, image_size=args.img_size)),
         transforms.RandomHorizontalFlip(),
         transforms.PILToTensor()
     ])

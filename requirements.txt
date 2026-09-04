@@ -1,0 +1,15 @@
+# 项目依赖（不含 torch / torchvision：它们需 GPU 专用版本，由 Cell 1 从 pytorch 专用源单独安装）
+numpy
+opencv-python
+timm
+tensorboard
+scipy
+einops
+gdown
+fonttools
+Pillow
+pytorch-msssim
+lpips
+torch-fidelity
+tqdm
+matplotlib
