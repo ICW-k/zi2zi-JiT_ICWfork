@@ -91,6 +91,12 @@ def get_args_parser():
     parser.add_argument('--save_last_freq', type=int, default=5)
     parser.add_argument('--log_freq', default=100, type=int)
     parser.add_argument('--device', default='cuda')
+    # 带轮次号的历史 checkpoint 备份（与 save_last_freq 解耦：按"第几次保存"计数）
+    parser.add_argument('--ckpt_backup_every', type=int, default=None,
+                        help='每第几次保存 checkpoint 时额外存一份带轮次号的历史版本'
+                             '（None/0=不备份，保持原行为）')
+    parser.add_argument('--ckpt_backup_keep', type=int, default=3,
+                        help='历史版本最多保留几个，超出则滚动删除最旧的')
 
     # LoRA
     parser.add_argument('--base_checkpoint', default='', type=str)
@@ -244,6 +250,20 @@ def main(args):
                 epoch_name="last",
                 optimizer=optimizer
             )
+            # 带轮次号的历史备份：按"第几次保存 checkpoint"计数（save_idx），
+            # 与 save_last_freq 解耦 —— 改 save_last_freq 时备份节奏自动跟随，不冲突。
+            # 续训时 epoch 从断点继续，save_idx 也随之连续，不会重复或漏备。
+            if getattr(args, 'ckpt_backup_every', None) and epoch % args.save_last_freq == 0:
+                _save_idx = epoch // args.save_last_freq
+                if _save_idx % args.ckpt_backup_every == 0:
+                    save_model_no_ema(
+                        args=args,
+                        model_without_ddp=model,
+                        epoch=epoch,
+                        epoch_name="ep%04d" % epoch,
+                        optimizer=optimizer
+                    )
+                    _prune_ckpt_backups(args.output_dir, args.ckpt_backup_keep)
 
         if args.online_eval and epoch > 0 and (epoch % args.eval_freq == 0 or epoch + 1 == args.epochs):
             torch.cuda.empty_cache()
@@ -257,6 +277,30 @@ def main(args):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print("Training time:", total_time_str)
+
+
+def _prune_ckpt_backups(output_dir, keep):
+    """只保留最近 keep 个带轮次号的历史 checkpoint（checkpoint-epXXXX.pth），
+    删除更旧的，避免长训练把磁盘占满。
+    """
+    if not keep or keep <= 0:
+        return
+    import re
+    from pathlib import Path
+    d = Path(output_dir)
+    if not d.is_dir():
+        return
+    hist = []
+    for p in d.glob("checkpoint-ep*.pth"):
+        m = re.match(r"checkpoint-ep(\d+)\.pth$", p.name)
+        if m:
+            hist.append((int(m.group(1)), p))
+    hist.sort(key=lambda t: t[0])
+    for _, p in hist[:-keep]:
+        try:
+            p.unlink()
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
