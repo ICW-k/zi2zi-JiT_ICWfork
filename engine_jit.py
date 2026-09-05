@@ -183,7 +183,10 @@ def evaluate(model_without_ddp, args, epoch, batch_size=64, log_writer=None):
             gen_img = gen_img.astype(np.uint8)[:, :, ::-1]
             cv2.imwrite(os.path.join(gen_folder, '{}.png'.format(str(img_id).zfill(5))), gen_img)
 
-            target_img = target_images_all[img_id].transpose([1, 2, 0])
+            if target_images_all is not None:
+                target_img = target_images_all[img_id].transpose([1, 2, 0])
+            else:
+                target_img = content_images_all[img_id].transpose([1, 2, 0])
             target_img = target_img[:, :, ::-1]
             pair_img = np.concatenate([target_img, gen_img], axis=1)
             pairs_buffer.append((img_id, pair_img))
@@ -221,7 +224,8 @@ def evaluate(model_without_ddp, args, epoch, batch_size=64, log_writer=None):
 
     if log_writer is not None:
         ref_folder = os.path.join(base_folder, "reference")
-        _save_reference_images(target_images_all, num_images, ref_folder)
+        _save_reference_images(target_images_all if target_images_all is not None else content_images_all,
+                               num_images, ref_folder)
         metrics_dict = torch_fidelity.calculate_metrics(
             input1=gen_folder,
             input2=ref_folder,
@@ -307,7 +311,8 @@ def evaluate_single_gpu(model, args, epoch, batch_size=64, log_writer=None):
     char_labels_all = test_data['char_labels']
     style_images_all = test_data['style_images']
     content_images_all = test_data['content_images']
-    target_images_all = test_data['target_images']
+    # 防御性读取：旧版数据集可能没有 target_images 字段，缺失时降级用 content（源字形）做对比图
+    target_images_all = test_data['target_images'] if 'target_images' in test_data else None
 
     num_total_samples = len(font_labels_all)
     num_images = min(args.num_images, num_total_samples)
@@ -359,7 +364,10 @@ def evaluate_single_gpu(model, args, epoch, batch_size=64, log_writer=None):
             gen_img = gen_img.astype(np.uint8)[:, :, ::-1]
             cv2.imwrite(os.path.join(gen_folder, '{}.png'.format(str(img_id).zfill(5))), gen_img)
 
-            target_img = target_images_all[img_id].transpose([1, 2, 0])
+            if target_images_all is not None:
+                target_img = target_images_all[img_id].transpose([1, 2, 0])
+            else:
+                target_img = content_images_all[img_id].transpose([1, 2, 0])
             target_img = target_img[:, :, ::-1]
             pair_img = np.concatenate([target_img, gen_img], axis=1)
             pairs_buffer.append((img_id, pair_img))
@@ -392,7 +400,8 @@ def evaluate_single_gpu(model, args, epoch, batch_size=64, log_writer=None):
 
     if log_writer is not None:
         ref_folder = os.path.join(base_folder, "reference")
-        _save_reference_images(target_images_all, num_images, ref_folder)
+        _save_reference_images(target_images_all if target_images_all is not None else content_images_all,
+                               num_images, ref_folder)
         metrics_dict = torch_fidelity.calculate_metrics(
             input1=gen_folder,
             input2=ref_folder,
